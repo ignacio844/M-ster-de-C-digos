@@ -23,11 +23,7 @@ const PAGE_SIZE = 100;
 
 function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   if (!active) return <ArrowUpDown className="size-3.5 text-subtle" />;
-  return dir === "asc" ? (
-    <ArrowUp className="size-3.5" />
-  ) : (
-    <ArrowDown className="size-3.5" />
-  );
+  return dir === "asc" ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />;
 }
 
 export function MatchTable({
@@ -86,16 +82,10 @@ export function MatchTable({
       const cellA = a.cells.find((item) => item.sourceId === source.id);
       const cellB = b.cells.find((item) => item.sourceId === source.id);
       const scoreA = cellA
-        ? resolveCellMatch(
-            cellA,
-            decisions[matchDecisionKey(source.id, a.bam.id)],
-          ).score
+        ? resolveCellMatch(cellA, decisions[matchDecisionKey(source.id, a.bam.id)]).score
         : -1;
       const scoreB = cellB
-        ? resolveCellMatch(
-            cellB,
-            decisions[matchDecisionKey(source.id, b.bam.id)],
-          ).score
+        ? resolveCellMatch(cellB, decisions[matchDecisionKey(source.id, b.bam.id)]).score
         : -1;
       return (scoreA - scoreB) * multiplier;
     });
@@ -125,14 +115,22 @@ export function MatchTable({
     setSortDir(key === "score" ? "desc" : "asc");
   }
 
-  function confirm(row: RowMatch) {
-    confirmMatch(source.id, row.bam.id);
-    toast.success("Coincidencia confirmada");
+  async function confirm(row: RowMatch) {
+    try {
+      await confirmMatch(source.id, row.bam.id);
+      toast.success("Coincidencia confirmada y compartida");
+    } catch {
+      toast.error("No se pudo guardar la confirmación");
+    }
   }
 
-  function reject(row: RowMatch) {
-    rejectMatch(source.id, row.bam.id);
-    toast.message("Sugerencia eliminada");
+  async function reject(row: RowMatch) {
+    try {
+      await rejectMatch(source.id, row.bam.id);
+      toast.message("Sugerencia eliminada para todos");
+    } catch {
+      toast.error("No se pudo guardar el cambio");
+    }
   }
 
   if (!sorted.length) {
@@ -188,20 +186,32 @@ export function MatchTable({
             <thead className="border-b border-border bg-chip/70 text-xs font-medium tracking-wide text-muted uppercase">
               <tr>
                 <th className="w-1/6 px-3 py-2.5">
-                  <button type="button" className="inline-flex items-center gap-1.5" onClick={() => toggleSort("code")}>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5"
+                    onClick={() => toggleSort("code")}
+                  >
                     Código
                     <SortIcon active={sortKey === "code"} dir={sortDir} />
                   </button>
                 </th>
                 <th className="w-1/4 px-3 py-2.5">
-                  <button type="button" className="inline-flex items-center gap-1.5" onClick={() => toggleSort("name")}>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5"
+                    onClick={() => toggleSort("name")}
+                  >
                     Descripción BAMinds
                     <SortIcon active={sortKey === "name"} dir={sortDir} />
                   </button>
                 </th>
                 <th className="w-1/4 px-3 py-2.5">Sugerencia en {source.name}</th>
                 <th className="w-1/8 px-3 py-2.5">
-                  <button type="button" className="inline-flex items-center gap-1.5" onClick={() => toggleSort("score")}>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5"
+                    onClick={() => toggleSort("score")}
+                  >
                     Coincidencia
                     <SortIcon active={sortKey === "score"} dir={sortDir} />
                   </button>
@@ -216,23 +226,37 @@ export function MatchTable({
                 const decision = decisions[matchDecisionKey(source.id, row.bam.id)];
                 const resolved = resolveCellMatch(cell, decision);
                 return (
-                  <tr key={row.bam.id} className="cursor-pointer border-t border-border transition-colors hover:bg-chip/60" onClick={() => onSelect(row.bam.id)}>
+                  <tr
+                    key={row.bam.id}
+                    className="cursor-pointer border-t border-border transition-colors hover:bg-chip/60"
+                    onClick={() => onSelect(row.bam.id)}
+                  >
                     <td className="px-3 py-3">
-                      <p className="truncate" title={row.bam.code}>{row.bam.code}</p>
+                      <p className="truncate" title={row.bam.code}>
+                        {row.bam.code}
+                      </p>
                     </td>
                     <td className="px-3 py-3">
-                      <p className="truncate" title={row.bam.name}>{row.bam.name}</p>
+                      <p className="truncate" title={row.bam.name}>
+                        {row.bam.name}
+                      </p>
                     </td>
                     <td className="px-3 py-3">
                       {resolved.matched ? (
                         <div className="min-w-0">
-                          <p className="truncate text-muted" title={resolved.matched.code}>{resolved.matched.code}</p>
+                          <p className="truncate text-muted" title={resolved.matched.code}>
+                            {resolved.matched.code}
+                          </p>
                           {resolved.matched.name ? (
-                            <p className="truncate" title={resolved.matched.name}>{resolved.matched.name}</p>
+                            <p className="truncate" title={resolved.matched.name}>
+                              {resolved.matched.name}
+                            </p>
                           ) : null}
                         </div>
                       ) : (
-                        <span className="text-muted">{resolved.rejected ? "Sugerencia eliminada" : "Sin equivalente"}</span>
+                        <span className="text-muted">
+                          {resolved.rejected ? "Sugerencia eliminada" : "Sin equivalente"}
+                        </span>
                       )}
                     </td>
                     <td className="px-3 py-3">
@@ -249,14 +273,37 @@ export function MatchTable({
                           </Badge>
                         ) : (
                           <>
-                            <Button size="sm" title="Confirmar" aria-label="Confirmar" onClick={() => confirm(row)} disabled={!resolved.matched}>
-                              <Check /><span className="hidden 2xl:inline">Confirmar</span>
+                            <Button
+                              size="sm"
+                              title="Confirmar"
+                              aria-label="Confirmar"
+                              onClick={() => void confirm(row)}
+                              disabled={!resolved.matched}
+                            >
+                              <Check />
+                              <span className="hidden 2xl:inline">Confirmar</span>
                             </Button>
-                            <Button size="sm" title="Eliminar" aria-label="Eliminar" variant="ghost" className="text-match-low" onClick={() => reject(row)} disabled={!resolved.matched}>
-                              <Trash2 /><span className="hidden 2xl:inline">Eliminar</span>
+                            <Button
+                              size="sm"
+                              title="Eliminar"
+                              aria-label="Eliminar"
+                              variant="ghost"
+                              className="text-match-low"
+                              onClick={() => void reject(row)}
+                              disabled={!resolved.matched}
+                            >
+                              <Trash2 />
+                              <span className="hidden 2xl:inline">Eliminar</span>
                             </Button>
-                            <Button size="sm" title="Editar" aria-label="Editar" variant="outline" onClick={() => onSelect(row.bam.id)}>
-                              <Pencil /><span className="hidden 2xl:inline">Editar</span>
+                            <Button
+                              size="sm"
+                              title="Editar"
+                              aria-label="Editar"
+                              variant="outline"
+                              onClick={() => onSelect(row.bam.id)}
+                            >
+                              <Pencil />
+                              <span className="hidden 2xl:inline">Editar</span>
                             </Button>
                           </>
                         )}
@@ -280,9 +327,17 @@ export function MatchTable({
             const resolved = resolveCellMatch(cell, decision);
             return (
               <li key={row.bam.id} className="rounded-xl border border-border bg-surface p-4">
-                <button type="button" className="w-full text-left" onClick={() => onSelect(row.bam.id)}>
-                  <p className="truncate text-sm text-muted" title={row.bam.code}>{row.bam.code}</p>
-                  <p className="mt-1 truncate text-sm" title={row.bam.name}>{row.bam.name}</p>
+                <button
+                  type="button"
+                  className="w-full text-left"
+                  onClick={() => onSelect(row.bam.id)}
+                >
+                  <p className="truncate text-sm text-muted" title={row.bam.code}>
+                    {row.bam.code}
+                  </p>
+                  <p className="mt-1 truncate text-sm" title={row.bam.name}>
+                    {row.bam.name}
+                  </p>
                 </button>
                 <div className="mt-3 rounded-md bg-elevated p-3">
                   <div className="mb-2 flex items-center justify-between gap-3">
@@ -293,17 +348,33 @@ export function MatchTable({
                   <p className="mt-2 truncate text-sm">
                     {resolved.matched
                       ? [resolved.matched.code, resolved.matched.name].filter(Boolean).join(" · ")
-                      : resolved.rejected ? "Sugerencia eliminada" : "Sin equivalente"}
+                      : resolved.rejected
+                        ? "Sugerencia eliminada"
+                        : "Sin equivalente"}
                   </p>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {resolved.confirmed ? (
-                    <Badge tone="high" className="col-span-3 justify-center gap-1 py-2.5"><Check className="size-3.5" />Confirmado</Badge>
+                    <Badge tone="high" className="col-span-3 justify-center gap-1 py-2.5">
+                      <Check className="size-3.5" />
+                      Confirmado
+                    </Badge>
                   ) : (
                     <>
-                      <Button onClick={() => confirm(row)} disabled={!resolved.matched}>Confirmar</Button>
-                      <Button variant="ghost" className="text-match-low" onClick={() => reject(row)} disabled={!resolved.matched}>Eliminar</Button>
-                      <Button variant="outline" onClick={() => onSelect(row.bam.id)}>Editar</Button>
+                      <Button onClick={() => void confirm(row)} disabled={!resolved.matched}>
+                        Confirmar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="text-match-low"
+                        onClick={() => void reject(row)}
+                        disabled={!resolved.matched}
+                      >
+                        Eliminar
+                      </Button>
+                      <Button variant="outline" onClick={() => onSelect(row.bam.id)}>
+                        Editar
+                      </Button>
                     </>
                   )}
                 </div>

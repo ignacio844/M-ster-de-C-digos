@@ -1,15 +1,17 @@
-import { i as __toESM } from "../_runtime.mjs";
+import { o as __toESM } from "../_runtime.mjs";
 import { n as require_react } from "../_libs/@radix-ui/react-compose-refs+[...].mjs";
 import { n as require_jsx_runtime } from "../_libs/radix-ui__react-context+react.mjs";
+import { a as record, i as object, o as string, t as _enum } from "../_libs/zod.mjs";
 import { a as Search, c as LoaderCircle, d as ChevronRight, f as ChevronLeft, g as ArrowDown, h as ArrowUpDown, i as Trash2, l as FileSpreadsheet, m as ArrowUp, n as Upload, o as Pencil, p as Check, s as PencilLine, t as X, u as Download } from "../_libs/lucide-react.mjs";
 import { a as DialogOverlay$1, c as DialogTrigger$1, i as DialogDescription$1, l as Slot, n as DialogClose, o as DialogPortal$1, r as DialogContent$1, s as DialogTitle$1, t as Dialog$1 } from "../_libs/@radix-ui/react-dialog+[...].mjs";
+import { n as TSS_SERVER_FUNCTION, r as getServerFnById, t as createServerFn } from "./ssr.mjs";
 import { n as toast, t as Toaster } from "../_libs/sonner.mjs";
 import { n as clsx, t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { t as twMerge } from "../_libs/tailwind-merge.mjs";
 import { n as create, t as persist } from "../_libs/zustand.mjs";
 import { a as useMotionValue, i as useMotionTemplate, n as useReducedMotion, r as useSpring, t as useInView } from "../_libs/framer-motion+[...].mjs";
 import { t as motion } from "../_libs/motion.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-Bcg0EmXj.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-BYk_It1D.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function fold(s) {
@@ -137,101 +139,160 @@ function Button({ className, variant, size, asChild = false, ...props }) {
 		...props
 	});
 }
+var createSsrRpc = (functionId) => {
+	const url = "/_serverFn/" + functionId;
+	const serverFnMeta = { id: functionId };
+	const fn = async (...args) => {
+		return (await getServerFnById(functionId, { origin: "server" }))(...args);
+	};
+	return Object.assign(fn, {
+		url,
+		serverFnMeta,
+		[TSS_SERVER_FUNCTION]: true
+	});
+};
+var catalogRowSchema = object({
+	id: string().min(1).max(500),
+	code: string().min(1).max(500),
+	name: string().max(5e3),
+	extra: record(string(), string().max(5e3))
+});
+var sharedDecisionSchema = object({
+	sourceId: string().regex(/^fixed-[a-z0-9-]+$/).max(200),
+	bamId: string().min(1).max(500),
+	decision: object({
+		status: _enum(["confirmed", "rejected"]),
+		candidateRowId: string().max(500).optional(),
+		manualMatch: catalogRowSchema.optional()
+	})
+});
+var listSharedDecisions = createServerFn({ method: "GET" }).handler(createSsrRpc("4fbd5c3253bea5dd3855ea3c3d7ee5182a6a0e392c0c06fc2750881c699732f1"));
+var saveSharedDecision = createServerFn({ method: "POST" }).validator(sharedDecisionSchema).handler(createSsrRpc("16284a7454792051e968f6fad0c66c256d4c1b7a65e6e54cd31a0094c56b3912"));
 function matchDecisionKey(sourceId, bamId) {
 	return `${sourceId}::${bamId}`;
 }
-var useCatalog = create()(persist((set) => ({
-	reference: null,
-	sources: [],
-	activeSourceId: null,
-	decisions: {},
-	threshold: 50,
-	query: "",
-	band: "confirmed",
-	selectedRowId: null,
-	setReference: (source) => set({
-		reference: source,
-		selectedRowId: null
-	}),
-	setFixedSources: (fixedSources) => set((state) => {
-		const manualSources = state.sources.filter((source) => !source.fixed);
-		const sources = [...fixedSources, ...manualSources];
-		return {
-			sources,
-			activeSourceId: sources.some((source) => source.id === state.activeSourceId) ? state.activeSourceId : fixedSources[0]?.id ?? manualSources[0]?.id ?? "baminds"
-		};
-	}),
-	setActiveSourceId: (id) => set({
-		activeSourceId: id,
-		selectedRowId: null
-	}),
-	addSource: (source) => set((state) => ({
-		sources: [...state.sources.filter((item) => item.id !== source.id), source],
-		activeSourceId: source.id,
-		band: "confirmed",
-		selectedRowId: null
-	})),
-	replaceSource: (source) => set((state) => ({
-		sources: state.sources.map((item) => item.id === source.id ? source : item),
-		selectedRowId: null
-	})),
-	removeSource: (id) => set((state) => {
-		if (state.sources.find((source) => source.id === id)?.fixed) return {};
-		const sources = state.sources.filter((item) => item.id !== id);
-		return {
-			sources,
-			activeSourceId: state.activeSourceId === id ? sources[0]?.id ?? null : state.activeSourceId,
-			decisions: Object.fromEntries(Object.entries(state.decisions).filter(([key]) => !key.startsWith(`${id}::`))),
-			selectedRowId: null
-		};
-	}),
-	setThreshold: (n) => set({ threshold: n }),
-	setQuery: (q) => set({ query: q }),
-	setBand: (b) => set({ band: b }),
-	setSelectedRowId: (id) => set({ selectedRowId: id }),
-	confirmMatch: (sourceId, bamId, candidateRowId) => set((state) => ({ decisions: {
-		...state.decisions,
-		[matchDecisionKey(sourceId, bamId)]: {
-			status: "confirmed",
-			candidateRowId
+var useCatalog = create()(persist((set, get) => {
+	async function commitDecision(sourceId, bamId, decision) {
+		const key = matchDecisionKey(sourceId, bamId);
+		const previous = get().decisions[key];
+		set((state) => ({ decisions: {
+			...state.decisions,
+			[key]: decision
+		} }));
+		if (!get().sources.some((source) => source.id === sourceId && source.fixed)) return;
+		try {
+			await saveSharedDecision({ data: {
+				sourceId,
+				bamId,
+				decision
+			} });
+		} catch (error) {
+			set((state) => {
+				if (state.decisions[key] !== decision) return {};
+				const decisions = { ...state.decisions };
+				if (previous) decisions[key] = previous;
+				else delete decisions[key];
+				return { decisions };
+			});
+			throw error;
 		}
-	} })),
-	confirmManualMatch: (sourceId, bamId, match) => set((state) => ({ decisions: {
-		...state.decisions,
-		[matchDecisionKey(sourceId, bamId)]: {
-			status: "confirmed",
-			manualMatch: match
-		}
-	} })),
-	rejectMatch: (sourceId, bamId) => set((state) => ({ decisions: {
-		...state.decisions,
-		[matchDecisionKey(sourceId, bamId)]: { status: "rejected" }
-	} })),
-	clearSources: () => set((state) => {
-		const fixedSources = state.sources.filter((source) => source.fixed);
-		const fixedIds = new Set(fixedSources.map((source) => source.id));
-		return {
-			sources: fixedSources,
-			activeSourceId: state.activeSourceId === "baminds" || fixedIds.has(state.activeSourceId ?? "") ? state.activeSourceId : fixedSources[0]?.id ?? "baminds",
-			decisions: Object.fromEntries(Object.entries(state.decisions).filter(([key]) => {
-				const sourceId = key.slice(0, key.indexOf("::"));
-				return fixedIds.has(sourceId);
-			})),
-			query: "",
-			band: "confirmed",
-			selectedRowId: null
-		};
-	}),
-	clearAll: () => set({
+	}
+	return {
 		reference: null,
 		sources: [],
 		activeSourceId: null,
 		decisions: {},
+		threshold: 50,
 		query: "",
 		band: "confirmed",
-		selectedRowId: null
-	})
-}), {
+		selectedRowId: null,
+		setReference: (source) => set({
+			reference: source,
+			selectedRowId: null
+		}),
+		setFixedSources: (fixedSources) => set((state) => {
+			const manualSources = state.sources.filter((source) => !source.fixed);
+			const sources = [...fixedSources, ...manualSources];
+			return {
+				sources,
+				activeSourceId: sources.some((source) => source.id === state.activeSourceId) ? state.activeSourceId : fixedSources[0]?.id ?? manualSources[0]?.id ?? "baminds"
+			};
+		}),
+		setSharedDecisions: (records) => set((state) => {
+			const fixedIds = new Set(state.sources.filter((source) => source.fixed).map((source) => source.id));
+			const decisions = Object.fromEntries(Object.entries(state.decisions).filter(([key]) => {
+				const sourceId = key.slice(0, key.indexOf("::"));
+				return !fixedIds.has(sourceId);
+			}));
+			for (const record of records) {
+				if (!fixedIds.has(record.sourceId)) continue;
+				decisions[matchDecisionKey(record.sourceId, record.bamId)] = record.decision;
+			}
+			return { decisions };
+		}),
+		setActiveSourceId: (id) => set({
+			activeSourceId: id,
+			selectedRowId: null
+		}),
+		addSource: (source) => set((state) => ({
+			sources: [...state.sources.filter((item) => item.id !== source.id), source],
+			activeSourceId: source.id,
+			band: "confirmed",
+			selectedRowId: null
+		})),
+		replaceSource: (source) => set((state) => ({
+			sources: state.sources.map((item) => item.id === source.id ? source : item),
+			selectedRowId: null
+		})),
+		removeSource: (id) => set((state) => {
+			if (state.sources.find((source) => source.id === id)?.fixed) return {};
+			const sources = state.sources.filter((item) => item.id !== id);
+			return {
+				sources,
+				activeSourceId: state.activeSourceId === id ? sources[0]?.id ?? null : state.activeSourceId,
+				decisions: Object.fromEntries(Object.entries(state.decisions).filter(([key]) => !key.startsWith(`${id}::`))),
+				selectedRowId: null
+			};
+		}),
+		setThreshold: (n) => set({ threshold: n }),
+		setQuery: (q) => set({ query: q }),
+		setBand: (b) => set({ band: b }),
+		setSelectedRowId: (id) => set({ selectedRowId: id }),
+		confirmMatch: (sourceId, bamId, candidateRowId) => commitDecision(sourceId, bamId, {
+			status: "confirmed",
+			candidateRowId
+		}),
+		confirmManualMatch: (sourceId, bamId, match) => commitDecision(sourceId, bamId, {
+			status: "confirmed",
+			manualMatch: match
+		}),
+		rejectMatch: (sourceId, bamId) => commitDecision(sourceId, bamId, { status: "rejected" }),
+		clearSources: () => set((state) => {
+			const fixedSources = state.sources.filter((source) => source.fixed);
+			const fixedIds = new Set(fixedSources.map((source) => source.id));
+			return {
+				sources: fixedSources,
+				activeSourceId: state.activeSourceId === "baminds" || fixedIds.has(state.activeSourceId ?? "") ? state.activeSourceId : fixedSources[0]?.id ?? "baminds",
+				decisions: Object.fromEntries(Object.entries(state.decisions).filter(([key]) => {
+					const sourceId = key.slice(0, key.indexOf("::"));
+					return fixedIds.has(sourceId);
+				})),
+				query: "",
+				band: "confirmed",
+				selectedRowId: null
+			};
+		}),
+		clearAll: () => set({
+			reference: null,
+			sources: [],
+			activeSourceId: null,
+			decisions: {},
+			query: "",
+			band: "confirmed",
+			selectedRowId: null
+		})
+	};
+}, {
 	name: "cruce-baminds-v2",
 	skipHydration: true,
 	partialize: (state) => ({ threshold: state.threshold })
@@ -314,13 +375,21 @@ function MatchTable({ rows, source, query, band, onSelect }) {
 		setSortKey(key);
 		setSortDir(key === "score" ? "desc" : "asc");
 	}
-	function confirm(row) {
-		confirmMatch(source.id, row.bam.id);
-		toast.success("Coincidencia confirmada");
+	async function confirm(row) {
+		try {
+			await confirmMatch(source.id, row.bam.id);
+			toast.success("Coincidencia confirmada y compartida");
+		} catch {
+			toast.error("No se pudo guardar la confirmación");
+		}
 	}
-	function reject(row) {
-		rejectMatch(source.id, row.bam.id);
-		toast.message("Sugerencia eliminada");
+	async function reject(row) {
+		try {
+			await rejectMatch(source.id, row.bam.id);
+			toast.message("Sugerencia eliminada para todos");
+		} catch {
+			toast.error("No se pudo guardar el cambio");
+		}
 	}
 	if (!sorted.length) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: "rounded-xl border border-border bg-surface px-6 py-12 text-center",
@@ -498,7 +567,7 @@ function MatchTable({ rows, source, query, band, onSelect }) {
 											size: "sm",
 											title: "Confirmar",
 											"aria-label": "Confirmar",
-											onClick: () => confirm(row),
+											onClick: () => void confirm(row),
 											disabled: !resolved.matched,
 											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, {}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 												className: "hidden 2xl:inline",
@@ -511,7 +580,7 @@ function MatchTable({ rows, source, query, band, onSelect }) {
 											"aria-label": "Eliminar",
 											variant: "ghost",
 											className: "text-match-low",
-											onClick: () => reject(row),
+											onClick: () => void reject(row),
 											disabled: !resolved.matched,
 											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, {}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 												className: "hidden 2xl:inline",
@@ -594,14 +663,14 @@ function MatchTable({ rows, source, query, band, onSelect }) {
 								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, { className: "size-3.5" }), "Confirmado"]
 							}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
-									onClick: () => confirm(row),
+									onClick: () => void confirm(row),
 									disabled: !resolved.matched,
 									children: "Confirmar"
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
 									variant: "ghost",
 									className: "text-match-low",
-									onClick: () => reject(row),
+									onClick: () => void reject(row),
 									disabled: !resolved.matched,
 									children: "Eliminar"
 								}),
@@ -787,19 +856,27 @@ function RowDetail({ row, source }) {
 	(0, import_react.useEffect)(() => {
 		setManualCode("");
 	}, [row?.bam.id, source?.id]);
-	function confirm(candidateRowId) {
+	async function confirm(candidateRowId) {
 		if (!row || !source) return;
-		confirmMatch(source.id, row.bam.id, candidateRowId);
-		setSelectedRowId(null);
-		toast.success("Coincidencia confirmada y movida a Confirmados");
+		try {
+			await confirmMatch(source.id, row.bam.id, candidateRowId);
+			setSelectedRowId(null);
+			toast.success("Coincidencia confirmada, compartida y movida a Confirmados");
+		} catch {
+			toast.error("No se pudo guardar la confirmación");
+		}
 	}
-	function reject() {
+	async function reject() {
 		if (!row || !source) return;
-		rejectMatch(source.id, row.bam.id);
-		setSelectedRowId(null);
-		toast.message("Sugerencia eliminada");
+		try {
+			await rejectMatch(source.id, row.bam.id);
+			setSelectedRowId(null);
+			toast.message("Sugerencia eliminada para todos");
+		} catch {
+			toast.error("No se pudo guardar el cambio");
+		}
 	}
-	function confirmManual() {
+	async function confirmManual() {
 		if (!row || !source) return;
 		const code = manualCode.trim();
 		const normalized = normalizeCode(code);
@@ -808,14 +885,18 @@ function RowDetail({ row, source }) {
 			return;
 		}
 		const sourceRow = source.rows.find((candidate) => normalizeCode(candidate.code) === normalized);
-		confirmManualMatch(source.id, row.bam.id, sourceRow ?? {
-			id: `manual-${source.id}-${row.bam.id}-${normalized}`,
-			code,
-			name: "Código ingresado manualmente",
-			extra: {}
-		});
-		setSelectedRowId(null);
-		toast.success(sourceRow ? "Código localizado en la base y confirmado" : "Código manual confirmado");
+		try {
+			await confirmManualMatch(source.id, row.bam.id, sourceRow ?? {
+				id: `manual-${source.id}-${row.bam.id}-${normalized}`,
+				code,
+				name: "Código ingresado manualmente",
+				extra: {}
+			});
+			setSelectedRowId(null);
+			toast.success(sourceRow ? "Código localizado, confirmado y compartido" : "Código manual confirmado y compartido");
+		} catch {
+			toast.error("No se pudo guardar el código confirmado");
+		}
 	}
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Sheet, {
 		open: !!row && !!source,
@@ -875,12 +956,12 @@ function RowDetail({ row, source }) {
 						!resolved.confirmed && resolved.matched ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "mt-4 grid grid-cols-2 gap-2",
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
-								onClick: () => confirm(),
+								onClick: () => void confirm(),
 								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, {}), "Confirmar"]
 							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Button, {
 								variant: "outline",
 								className: "text-match-low",
-								onClick: reject,
+								onClick: () => void reject(),
 								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, {}), "Eliminar"]
 							})]
 						}) : null
@@ -954,7 +1035,7 @@ function RowDetail({ row, source }) {
 								variant: "outline",
 								size: "sm",
 								className: "mt-3 w-full",
-								onClick: () => confirm(candidate.row.id),
+								onClick: () => void confirm(candidate.row.id),
 								children: "Seleccionar y confirmar"
 							})]
 						}, candidate.row.id))
@@ -1650,6 +1731,7 @@ function Home() {
 	const selectedRowId = useCatalog((s) => s.selectedRowId);
 	const setReference = useCatalog((s) => s.setReference);
 	const setFixedSources = useCatalog((s) => s.setFixedSources);
+	const setSharedDecisions = useCatalog((s) => s.setSharedDecisions);
 	const setActiveSourceId = useCatalog((s) => s.setActiveSourceId);
 	const setQuery = useCatalog((s) => s.setQuery);
 	const setBand = useCatalog((s) => s.setBand);
@@ -1669,6 +1751,13 @@ function Home() {
 				if (!cancelled) {
 					setReference(baminds);
 					setFixedSources(fixedSources);
+					try {
+						const sharedDecisions = await listSharedDecisions();
+						if (!cancelled) setSharedDecisions(sharedDecisions);
+					} catch (error) {
+						console.error(error);
+						toast.error("No se pudo cargar el progreso compartido");
+					}
 				}
 			} catch (error) {
 				console.error(error);
@@ -1681,7 +1770,33 @@ function Home() {
 		return () => {
 			cancelled = true;
 		};
-	}, [setFixedSources, setReference]);
+	}, [
+		setFixedSources,
+		setReference,
+		setSharedDecisions
+	]);
+	(0, import_react.useEffect)(() => {
+		if (!ready) return;
+		let cancelled = false;
+		const refreshSharedDecisions = async () => {
+			try {
+				const sharedDecisions = await listSharedDecisions();
+				if (!cancelled) setSharedDecisions(sharedDecisions);
+			} catch (error) {
+				console.warn("No se pudo actualizar el progreso compartido", error);
+			}
+		};
+		const interval = window.setInterval(() => {
+			refreshSharedDecisions();
+		}, 15e3);
+		const refreshOnFocus = () => void refreshSharedDecisions();
+		window.addEventListener("focus", refreshOnFocus);
+		return () => {
+			cancelled = true;
+			window.clearInterval(interval);
+			window.removeEventListener("focus", refreshOnFocus);
+		};
+	}, [ready, setSharedDecisions]);
 	(0, import_react.useEffect)(() => {
 		if (!reference) {
 			setRows([]);

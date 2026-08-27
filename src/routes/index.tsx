@@ -11,13 +11,10 @@ import { Input } from "@/components/ui/input";
 import { TiltCard } from "@/components/ui/tilt-card";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { tableToCsv } from "@/lib/csv";
-import {
-  resolveCellMatch,
-  type MatchBand,
-  type RowMatch,
-} from "@/lib/matching";
+import { resolveCellMatch, type MatchBand, type RowMatch } from "@/lib/matching";
 import { loadFixedSources } from "@/lib/fixed-sources";
 import { loadBamindsReference } from "@/lib/sample-data";
+import { listSharedDecisions } from "@/lib/shared-decisions";
 import { matchDecisionKey, useCatalog } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -33,8 +30,7 @@ const BANDS: { id: MatchBand; label: string }[] = [
 ];
 
 type WorkerResponse =
-  | { jobId: number; ok: true; rows: RowMatch[] }
-  | { jobId: number; ok: false; error: string };
+  { jobId: number; ok: true; rows: RowMatch[] } | { jobId: number; ok: false; error: string };
 
 // Traduce el % de confirmación a la misma escala de color que ya usan
 // MatchBar/MatchPercent, para que "cuánto está confirmado" se lea de un
@@ -64,6 +60,7 @@ function Home() {
   const selectedRowId = useCatalog((s) => s.selectedRowId);
   const setReference = useCatalog((s) => s.setReference);
   const setFixedSources = useCatalog((s) => s.setFixedSources);
+  const setSharedDecisions = useCatalog((s) => s.setSharedDecisions);
   const setActiveSourceId = useCatalog((s) => s.setActiveSourceId);
   const setQuery = useCatalog((s) => s.setQuery);
   const setBand = useCatalog((s) => s.setBand);
@@ -71,17 +68,10 @@ function Home() {
   const removeSource = useCatalog((s) => s.removeSource);
   const clearSources = useCatalog((s) => s.clearSources);
 
-  const activeSource = useMemo(
-    () => {
-      if (activeSourceId === "baminds") return null;
-      return (
-        sources.find((source) => source.id === activeSourceId) ??
-        sources[0] ??
-        null
-      );
-    },
-    [sources, activeSourceId],
-  );
+  const activeSource = useMemo(() => {
+    if (activeSourceId === "baminds") return null;
+    return sources.find((source) => source.id === activeSourceId) ?? sources[0] ?? null;
+  }, [sources, activeSourceId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +87,14 @@ function Home() {
         if (!cancelled) {
           setReference(baminds);
           setFixedSources(fixedSources);
+
+          try {
+            const sharedDecisions = await listSharedDecisions();
+            if (!cancelled) setSharedDecisions(sharedDecisions);
+          } catch (error) {
+            console.error(error);
+            toast.error("No se pudo cargar el progreso compartido");
+          }
         }
       } catch (error) {
         console.error(error);
@@ -116,7 +114,33 @@ function Home() {
     return () => {
       cancelled = true;
     };
-  }, [setFixedSources, setReference]);
+  }, [setFixedSources, setReference, setSharedDecisions]);
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+
+    const refreshSharedDecisions = async () => {
+      try {
+        const sharedDecisions = await listSharedDecisions();
+        if (!cancelled) setSharedDecisions(sharedDecisions);
+      } catch (error) {
+        console.warn("No se pudo actualizar el progreso compartido", error);
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      void refreshSharedDecisions();
+    }, 15_000);
+    const refreshOnFocus = () => void refreshSharedDecisions();
+    window.addEventListener("focus", refreshOnFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
+    };
+  }, [ready, setSharedDecisions]);
 
   useEffect(() => {
     if (!reference) {
@@ -137,10 +161,9 @@ function Home() {
 
     // La comparación pesada corre fuera del hilo principal para que la interfaz
     // no quede congelada mientras se procesan decenas de miles de registros.
-    const worker = new Worker(
-      new URL("../workers/matching.worker.ts", import.meta.url),
-      { type: "module" },
-    );
+    const worker = new Worker(new URL("../workers/matching.worker.ts", import.meta.url), {
+      type: "module",
+    });
 
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       const result = event.data;
@@ -197,9 +220,7 @@ function Home() {
           sourceId: source.id,
           confirmed,
           reviewable,
-          percentage: reviewable
-            ? Math.round((confirmed / reviewable) * 100)
-            : 0,
+          percentage: reviewable ? Math.round((confirmed / reviewable) * 100) : 0,
         };
       }),
     [rows, sources, decisions],
@@ -237,11 +258,7 @@ function Home() {
           resolved.matched?.name ?? "",
           resolved.by === "none" ? "" : String(resolved.score),
           resolved.by,
-          resolved.confirmed
-            ? "confirmado"
-            : resolved.rejected
-              ? "eliminado"
-              : "pendiente",
+          resolved.confirmed ? "confirmado" : resolved.rejected ? "eliminado" : "pendiente",
         ]);
       }
     }
@@ -320,8 +337,7 @@ function Home() {
                   max={8}
                   className={cn(
                     "h-full min-w-56 border border-primary/80 bg-primary text-primary-fg shadow-md transition-shadow hover:shadow-lg sm:min-w-64",
-                    !activeSource &&
-                      "ring-2 ring-primary-fg/20 ring-offset-2 ring-offset-bg",
+                    !activeSource && "ring-2 ring-primary-fg/20 ring-offset-2 ring-offset-bg",
                   )}
                 >
                   <article className="flex h-full min-h-[142px] flex-col p-4">
@@ -349,7 +365,9 @@ function Home() {
               {!sources.length ? (
                 <article className="flex min-w-56 flex-1 flex-col justify-center self-stretch rounded-lg border border-dashed border-border-strong bg-surface px-3 py-2.5">
                   <p className="text-sm font-medium">Sumá una base comparativa</p>
-                  <p className="text-xs text-muted">BAMinds ya está conectada desde el JSON maestro.</p>
+                  <p className="text-xs text-muted">
+                    BAMinds ya está conectada desde el JSON maestro.
+                  </p>
                 </article>
               ) : isComparing ? (
                 sources.map((src) => (
@@ -429,9 +447,7 @@ function Home() {
                         <div
                           className={cn(
                             "col-start-1 row-start-1 flex h-full flex-col items-center justify-center gap-2 px-1 py-3 transition-opacity duration-200 ease-out",
-                            isActive
-                              ? "pointer-events-none opacity-0"
-                              : "opacity-100 delay-100",
+                            isActive ? "pointer-events-none opacity-0" : "opacity-100 delay-100",
                           )}
                         >
                           {avatar}
@@ -446,9 +462,7 @@ function Home() {
                         <div
                           className={cn(
                             "relative col-start-1 row-start-1 flex h-full flex-col gap-2 px-3 py-3 transition-opacity duration-200 ease-out",
-                            isActive
-                              ? "opacity-100"
-                              : "pointer-events-none opacity-0",
+                            isActive ? "opacity-100" : "pointer-events-none opacity-0",
                           )}
                         >
                           <div className="flex items-center gap-2 pr-4">
@@ -509,9 +523,7 @@ function Home() {
                           type="button"
                           className={cn(
                             "absolute top-1 right-1 rounded-sm p-1.5 text-subtle transition-opacity duration-200 ease-out hover:bg-chip hover:text-fg",
-                            isActive
-                              ? "opacity-100 delay-100"
-                              : "pointer-events-none opacity-0",
+                            isActive ? "opacity-100 delay-100" : "pointer-events-none opacity-0",
                           )}
                           aria-label={`Quitar ${src?.name}`}
                           onClick={() => removeSource(st.sourceId)}
@@ -562,7 +574,9 @@ function Home() {
             {isComparing ? (
               <div className="rounded-xl border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
                 <p className="font-medium text-fg">Procesando comparación en segundo plano…</p>
-                <p className="mt-1">La página debería seguir respondiendo mientras se analizan los registros.</p>
+                <p className="mt-1">
+                  La página debería seguir respondiendo mientras se analizan los registros.
+                </p>
               </div>
             ) : activeSource ? (
               <MatchTable

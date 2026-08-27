@@ -17,46 +17,44 @@ import type { RowMatch, Source } from "@/lib/matching";
 import { matchTone, normalizeCode, resolveCellMatch } from "@/lib/matching";
 import { matchDecisionKey, useCatalog } from "@/lib/store";
 
-export function RowDetail({
-  row,
-  source,
-}: {
-  row: RowMatch | null;
-  source: Source | null;
-}) {
+export function RowDetail({ row, source }: { row: RowMatch | null; source: Source | null }) {
   const [manualCode, setManualCode] = useState("");
   const setSelectedRowId = useCatalog((state) => state.setSelectedRowId);
   const decisions = useCatalog((state) => state.decisions);
   const confirmMatch = useCatalog((state) => state.confirmMatch);
   const confirmManualMatch = useCatalog((state) => state.confirmManualMatch);
   const rejectMatch = useCatalog((state) => state.rejectMatch);
-  const cell = row && source
-    ? row.cells.find((item) => item.sourceId === source.id)
-    : null;
-  const decision = row && source
-    ? decisions[matchDecisionKey(source.id, row.bam.id)]
-    : undefined;
+  const cell = row && source ? row.cells.find((item) => item.sourceId === source.id) : null;
+  const decision = row && source ? decisions[matchDecisionKey(source.id, row.bam.id)] : undefined;
   const resolved = cell ? resolveCellMatch(cell, decision) : null;
 
   useEffect(() => {
     setManualCode("");
   }, [row?.bam.id, source?.id]);
 
-  function confirm(candidateRowId?: string) {
+  async function confirm(candidateRowId?: string) {
     if (!row || !source) return;
-    confirmMatch(source.id, row.bam.id, candidateRowId);
-    setSelectedRowId(null);
-    toast.success("Coincidencia confirmada y movida a Confirmados");
+    try {
+      await confirmMatch(source.id, row.bam.id, candidateRowId);
+      setSelectedRowId(null);
+      toast.success("Coincidencia confirmada, compartida y movida a Confirmados");
+    } catch {
+      toast.error("No se pudo guardar la confirmación");
+    }
   }
 
-  function reject() {
+  async function reject() {
     if (!row || !source) return;
-    rejectMatch(source.id, row.bam.id);
-    setSelectedRowId(null);
-    toast.message("Sugerencia eliminada");
+    try {
+      await rejectMatch(source.id, row.bam.id);
+      setSelectedRowId(null);
+      toast.message("Sugerencia eliminada para todos");
+    } catch {
+      toast.error("No se pudo guardar el cambio");
+    }
   }
 
-  function confirmManual() {
+  async function confirmManual() {
     if (!row || !source) return;
     const code = manualCode.trim();
     const normalized = normalizeCode(code);
@@ -65,21 +63,27 @@ export function RowDetail({
       return;
     }
 
-    const sourceRow = source.rows.find(
-      (candidate) => normalizeCode(candidate.code) === normalized,
-    );
-    confirmManualMatch(source.id, row.bam.id, sourceRow ?? {
-      id: `manual-${source.id}-${row.bam.id}-${normalized}`,
-      code,
-      name: "Código ingresado manualmente",
-      extra: {},
-    });
-    setSelectedRowId(null);
-    toast.success(
-      sourceRow
-        ? "Código localizado en la base y confirmado"
-        : "Código manual confirmado",
-    );
+    const sourceRow = source.rows.find((candidate) => normalizeCode(candidate.code) === normalized);
+    try {
+      await confirmManualMatch(
+        source.id,
+        row.bam.id,
+        sourceRow ?? {
+          id: `manual-${source.id}-${row.bam.id}-${normalized}`,
+          code,
+          name: "Código ingresado manualmente",
+          extra: {},
+        },
+      );
+      setSelectedRowId(null);
+      toast.success(
+        sourceRow
+          ? "Código localizado, confirmado y compartido"
+          : "Código manual confirmado y compartido",
+      );
+    } catch {
+      toast.error("No se pudo guardar el código confirmado");
+    }
   }
 
   return (
@@ -104,11 +108,16 @@ export function RowDetail({
               <section className="rounded-lg border border-border bg-elevated p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-medium tracking-wide text-muted uppercase">Sugerencia actual</p>
+                    <p className="text-xs font-medium tracking-wide text-muted uppercase">
+                      Sugerencia actual
+                    </p>
                     <h3 className="mt-1 font-medium">{source.name}</h3>
                   </div>
                   {resolved.confirmed ? (
-                    <Badge tone="high" className="gap-1"><Check className="size-3.5" />Confirmado</Badge>
+                    <Badge tone="high" className="gap-1">
+                      <Check className="size-3.5" />
+                      Confirmado
+                    </Badge>
                   ) : (
                     <MatchPercent score={resolved.score} by={resolved.by} />
                   )}
@@ -131,8 +140,18 @@ export function RowDetail({
 
                 {!resolved.confirmed && resolved.matched ? (
                   <div className="mt-4 grid grid-cols-2 gap-2">
-                    <Button onClick={() => confirm()}><Check />Confirmar</Button>
-                    <Button variant="outline" className="text-match-low" onClick={reject}><Trash2 />Eliminar</Button>
+                    <Button onClick={() => void confirm()}>
+                      <Check />
+                      Confirmar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="text-match-low"
+                      onClick={() => void reject()}
+                    >
+                      <Trash2 />
+                      Eliminar
+                    </Button>
                   </div>
                 ) : null}
               </section>
@@ -140,13 +159,15 @@ export function RowDetail({
               <section>
                 <div className="mb-2">
                   <h3 className="font-medium">Editar coincidencia</h3>
-                  <p className="text-sm text-muted">Elegí una propuesta o ingresá el código correcto manualmente.</p>
+                  <p className="text-sm text-muted">
+                    Elegí una propuesta o ingresá el código correcto manualmente.
+                  </p>
                 </div>
                 <form
                   className="mb-3 rounded-lg border border-border bg-elevated p-3"
                   onSubmit={(event) => {
                     event.preventDefault();
-                    confirmManual();
+                    void confirmManual();
                   }}
                 >
                   <Label htmlFor="manual-code">Código manual</Label>
@@ -170,19 +191,24 @@ export function RowDetail({
                 {cell.candidates.length ? (
                   <ul className="flex flex-col gap-2">
                     {cell.candidates.map((candidate) => (
-                      <li key={candidate.row.id} className="rounded-lg border border-border bg-surface p-3">
+                      <li
+                        key={candidate.row.id}
+                        className="rounded-lg border border-border bg-surface p-3"
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="font-mono text-xs text-muted">{candidate.row.code}</p>
                             <p className="mt-1 text-sm leading-relaxed">{candidate.row.name}</p>
                           </div>
-                          <Badge tone={matchTone(candidate.score, candidate.by)}>{candidate.score}%</Badge>
+                          <Badge tone={matchTone(candidate.score, candidate.by)}>
+                            {candidate.score}%
+                          </Badge>
                         </div>
                         <Button
                           variant="outline"
                           size="sm"
                           className="mt-3 w-full"
-                          onClick={() => confirm(candidate.row.id)}
+                          onClick={() => void confirm(candidate.row.id)}
                         >
                           Seleccionar y confirmar
                         </Button>

@@ -180,6 +180,9 @@ export default defineConfig(({ command, isPreview }) => ({
             // Radix lo usa durante el render SSR y Vercel debe recibirlo dentro
             // de la función, no como una dependencia que deba resolver aparte.
             noExternals: ["tslib"],
+            // El fallback local de producción necesita también los binarios
+            // `pglite.data` y `pglite.wasm`; el trazado copia el paquete entero.
+            traceDeps: ["@electric-sql/pglite"],
             // Auto-registers server/middleware/* (the PWA install page +
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
