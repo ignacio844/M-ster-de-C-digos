@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   guessCodeColumn,
   guessNameColumn,
@@ -62,11 +63,7 @@ function isDelimitedFile(file: File): boolean {
   return name.endsWith(".csv") || name.endsWith(".tsv") || name.endsWith(".txt");
 }
 
-export function UploadDialog({
-  triggerLabel = "Cargar base",
-}: {
-  triggerLabel?: string;
-}) {
+export function UploadDialog() {
   const addSource = useCatalog((s) => s.addSource);
   const [open, setOpen] = useState(false);
   const [sourceName, setSourceName] = useState("");
@@ -121,7 +118,9 @@ export function UploadDialog({
       }
 
       if (file.name.toLowerCase().endsWith(".xls")) {
-        toast.error("El formato .xls antiguo no está soportado. Guardalo como .xlsx e intentá de nuevo.");
+        toast.error(
+          "El formato .xls antiguo no está soportado. Guardalo como .xlsx e intentá de nuevo.",
+        );
         return;
       }
 
@@ -175,12 +174,16 @@ export function UploadDialog({
         if (!value) reset();
       }}
     >
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Upload />
-          {triggerLabel}
-        </Button>
-      </DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>
+            <Button size="icon" aria-label="Cargar una base manual">
+              <Upload />
+            </Button>
+          </DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Cargar una base excepcional desde Excel, CSV o texto.</TooltipContent>
+      </Tooltip>
 
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -217,13 +220,9 @@ export function UploadDialog({
               <FileSpreadsheet className="size-5 text-muted" />
             )}
             <span className="text-sm font-medium">
-              {isReading
-                ? "Leyendo archivo…"
-                : fileName || "Soltar Excel o CSV, o elegir archivo"}
+              {isReading ? "Leyendo archivo…" : fileName || "Soltar Excel o CSV, o elegir archivo"}
             </span>
-            <span className="text-xs text-muted">
-              Formatos admitidos: .xlsx, .csv, .tsv y .txt
-            </span>
+            <span className="text-xs text-muted">Formatos admitidos: .xlsx, .csv, .tsv y .txt</span>
             <input
               type="file"
               accept=".xlsx,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,text/plain"

@@ -29,16 +29,26 @@ export type SharedDecisionRecord = {
   decision: MatchDecision;
 };
 
+export type SharedDecisionsSnapshot = {
+  records: SharedDecisionRecord[];
+  lastUpdatedAt: string | null;
+};
+
+export type SharedDecisionWriteResult = {
+  updatedAt: string;
+};
+
 type DecisionRow = {
   sourceId: string;
   bamId: string;
   status: "confirmed" | "rejected";
   candidateRowId: string | null;
   manualMatch: CatalogRow | null;
+  updatedAt: string;
 };
 
 export const listSharedDecisions = createServerFn({ method: "GET" }).handler(
-  async (): Promise<SharedDecisionRecord[]> => {
+  async (): Promise<SharedDecisionsSnapshot> => {
     const sql = await getSql();
     const rows = await sql<DecisionRow>`
       select
@@ -46,32 +56,39 @@ export const listSharedDecisions = createServerFn({ method: "GET" }).handler(
         bam_id as "bamId",
         status,
         candidate_row_id as "candidateRowId",
-        manual_match as "manualMatch"
+        manual_match as "manualMatch",
+        to_char(
+          updated_at at time zone 'UTC',
+          'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+        ) as "updatedAt"
       from match_decisions
       order by updated_at asc
     `;
 
-    return rows.map((row) => ({
-      sourceId: row.sourceId,
-      bamId: row.bamId,
-      decision: {
-        status: row.status,
-        ...(row.candidateRowId ? { candidateRowId: row.candidateRowId } : {}),
-        ...(row.manualMatch ? { manualMatch: row.manualMatch } : {}),
-      },
-    }));
+    return {
+      records: rows.map((row) => ({
+        sourceId: row.sourceId,
+        bamId: row.bamId,
+        decision: {
+          status: row.status,
+          ...(row.candidateRowId ? { candidateRowId: row.candidateRowId } : {}),
+          ...(row.manualMatch ? { manualMatch: row.manualMatch } : {}),
+        },
+      })),
+      lastUpdatedAt: rows.at(-1)?.updatedAt ?? null,
+    };
   },
 );
 
 export const saveSharedDecision = createServerFn({ method: "POST" })
   .validator(sharedDecisionSchema)
-  .handler(async ({ data }): Promise<void> => {
+  .handler(async ({ data }): Promise<SharedDecisionWriteResult> => {
     const sql = await getSql();
     const manualMatch = data.decision.manualMatch
       ? JSON.stringify(data.decision.manualMatch)
       : null;
 
-    await sql.query(
+    const [saved] = await sql.query<SharedDecisionWriteResult>(
       `insert into match_decisions (
         source_id,
         bam_id,
@@ -84,7 +101,11 @@ export const saveSharedDecision = createServerFn({ method: "POST" })
         status = excluded.status,
         candidate_row_id = excluded.candidate_row_id,
         manual_match = excluded.manual_match,
-        updated_at = now()`,
+        updated_at = now()
+      returning to_char(
+        updated_at at time zone 'UTC',
+        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+      ) as "updatedAt"`,
       [
         data.sourceId,
         data.bamId,
@@ -93,4 +114,7 @@ export const saveSharedDecision = createServerFn({ method: "POST" })
         manualMatch,
       ],
     );
+
+    if (!saved) throw new Error("La decisión no devolvió una fecha de actualización");
+    return saved;
   });

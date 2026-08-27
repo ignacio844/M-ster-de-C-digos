@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Toaster, toast } from "sonner";
-import { Download, Search, Trash2, X } from "lucide-react";
+import { Database, Download, Search, Trash2, X } from "lucide-react";
 import { MatchTable } from "@/components/match-table";
 import { MasterTable } from "@/components/master-table";
 import { RowDetail } from "@/components/row-detail";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TiltCard } from "@/components/ui/tilt-card";
 import { NumberTicker } from "@/components/ui/number-ticker";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { tableToCsv } from "@/lib/csv";
 import { resolveCellMatch, type MatchBand, type RowMatch } from "@/lib/matching";
 import { loadFixedSources } from "@/lib/fixed-sources";
@@ -42,10 +43,27 @@ function confirmTone(percentage: number) {
   return "match-none";
 }
 
+const sqlUpdateFormatter = new Intl.DateTimeFormat("es-AR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function formatSqlUpdate(value: string | null) {
+  if (!value) return "Sin cambios guardados";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Fecha no disponible";
+  return sqlUpdateFormatter.format(date).replace(",", " ·");
+}
+
 function Home() {
   const [ready, setReady] = useState(false);
   const [rows, setRows] = useState<RowMatch[]>([]);
   const [isComparing, setIsComparing] = useState(false);
+  const [sqlStatus, setSqlStatus] = useState<"loading" | "ready" | "error">("loading");
   // Fuerza un remount de los tickers cada vez que se activa una fuente,
   // para que la animación se reproduzca siempre al abrir la tarjeta.
   const [tickerRun, setTickerRun] = useState(0);
@@ -55,6 +73,7 @@ function Home() {
   const sources = useCatalog((s) => s.sources);
   const activeSourceId = useCatalog((s) => s.activeSourceId);
   const decisions = useCatalog((s) => s.decisions);
+  const lastSharedUpdateAt = useCatalog((s) => s.lastSharedUpdateAt);
   const query = useCatalog((s) => s.query);
   const band = useCatalog((s) => s.band);
   const selectedRowId = useCatalog((s) => s.selectedRowId);
@@ -90,9 +109,13 @@ function Home() {
 
           try {
             const sharedDecisions = await listSharedDecisions();
-            if (!cancelled) setSharedDecisions(sharedDecisions);
+            if (!cancelled) {
+              setSharedDecisions(sharedDecisions);
+              setSqlStatus("ready");
+            }
           } catch (error) {
             console.error(error);
+            if (!cancelled) setSqlStatus("error");
             toast.error("No se pudo cargar el progreso compartido");
           }
         }
@@ -123,8 +146,12 @@ function Home() {
     const refreshSharedDecisions = async () => {
       try {
         const sharedDecisions = await listSharedDecisions();
-        if (!cancelled) setSharedDecisions(sharedDecisions);
+        if (!cancelled) {
+          setSharedDecisions(sharedDecisions);
+          setSqlStatus("ready");
+        }
       } catch (error) {
+        if (!cancelled) setSqlStatus("error");
         console.warn("No se pudo actualizar el progreso compartido", error);
       }
     };
@@ -200,6 +227,12 @@ function Home() {
   );
 
   const hasManualSources = sources.some((source) => !source.fixed);
+  const sqlUpdateLabel =
+    sqlStatus === "loading"
+      ? "Consultando…"
+      : sqlStatus === "error"
+        ? "No disponible"
+        : formatSqlUpdate(lastSharedUpdateAt);
 
   const stats = useMemo(
     () =>
@@ -292,31 +325,72 @@ function Home() {
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <UploadDialog triggerLabel="Cargar base" />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportCsv}
-              disabled={!reference || isComparing}
-            >
-              <Download />
-              <span className="hidden sm:inline">Exportar</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              title="Eliminar bases cargadas manualmente"
-              disabled={isComparing || !hasManualSources}
-              onClick={() => {
-                clearSources();
-                toast.message("Bases manuales eliminadas");
-              }}
-            >
-              <Trash2 />
-              <span className="sr-only">Vaciar</span>
-            </Button>
-          </div>
+          <TooltipProvider delayDuration={250}>
+            <div className="flex flex-wrap items-center gap-2">
+              <UploadDialog />
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Exportar el cruce"
+                    onClick={exportCsv}
+                    disabled={!reference || isComparing}
+                  >
+                    <Download />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Exportar el cruce completo en formato CSV.</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Eliminar bases cargadas manualmente"
+                    disabled={isComparing || !hasManualSources}
+                    onClick={() => {
+                      clearSources();
+                      toast.message("Bases manuales eliminadas");
+                    }}
+                  >
+                    <Trash2 />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Eliminar únicamente las bases cargadas manualmente.</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className="flex h-11 min-w-52 items-center gap-2 rounded-sm border border-border bg-surface px-3 shadow-sm"
+                    aria-label={`Última actualización del progreso SQL: ${sqlUpdateLabel}`}
+                    aria-live="polite"
+                    role="status"
+                    tabIndex={0}
+                  >
+                    <Database className="size-4 shrink-0 text-primary" />
+                    <div className="min-w-0 leading-tight">
+                      <p className="text-xs font-medium tracking-wide text-muted uppercase">
+                        Última actualización
+                      </p>
+                      <time
+                        className="block truncate font-mono text-xs font-medium tabular-nums"
+                        dateTime={lastSharedUpdateAt ?? undefined}
+                      >
+                        {sqlUpdateLabel}
+                      </time>
+                    </div>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Fecha y hora del último cambio guardado en el progreso compartido.
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
         </div>
       </header>
 

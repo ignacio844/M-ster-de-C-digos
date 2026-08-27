@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { CatalogRow, MatchBand, MatchDecision, Source } from "@/lib/matching";
-import { saveSharedDecision, type SharedDecisionRecord } from "@/lib/shared-decisions";
+import { saveSharedDecision, type SharedDecisionsSnapshot } from "@/lib/shared-decisions";
 
 export function matchDecisionKey(sourceId: string, bamId: string) {
   return `${sourceId}::${bamId}`;
@@ -12,13 +12,14 @@ export type CatalogState = {
   sources: Source[];
   activeSourceId: string | null;
   decisions: Record<string, MatchDecision>;
+  lastSharedUpdateAt: string | null;
   threshold: number;
   query: string;
   band: MatchBand;
   selectedRowId: string | null;
   setReference: (source: Source) => void;
   setFixedSources: (sources: Source[]) => void;
-  setSharedDecisions: (records: SharedDecisionRecord[]) => void;
+  setSharedDecisions: (snapshot: SharedDecisionsSnapshot) => void;
   setActiveSourceId: (id: string) => void;
   addSource: (source: Source) => void;
   replaceSource: (source: Source) => void;
@@ -53,7 +54,8 @@ export const useCatalog = create<CatalogState>()(
         if (!isFixed) return;
 
         try {
-          await saveSharedDecision({ data: { sourceId, bamId, decision } });
+          const saved = await saveSharedDecision({ data: { sourceId, bamId, decision } });
+          set({ lastSharedUpdateAt: saved.updatedAt });
         } catch (error) {
           set((state) => {
             if (state.decisions[key] !== decision) return {};
@@ -71,6 +73,7 @@ export const useCatalog = create<CatalogState>()(
         sources: [],
         activeSourceId: null,
         decisions: {},
+        lastSharedUpdateAt: null,
         threshold: 50,
         query: "",
         band: "confirmed",
@@ -92,7 +95,7 @@ export const useCatalog = create<CatalogState>()(
             return { sources, activeSourceId };
           }),
 
-        setSharedDecisions: (records) =>
+        setSharedDecisions: (snapshot) =>
           set((state) => {
             const fixedIds = new Set(
               state.sources.filter((source) => source.fixed).map((source) => source.id),
@@ -103,11 +106,11 @@ export const useCatalog = create<CatalogState>()(
                 return !fixedIds.has(sourceId);
               }),
             );
-            for (const record of records) {
+            for (const record of snapshot.records) {
               if (!fixedIds.has(record.sourceId)) continue;
               decisions[matchDecisionKey(record.sourceId, record.bamId)] = record.decision;
             }
-            return { decisions };
+            return { decisions, lastSharedUpdateAt: snapshot.lastUpdatedAt };
           }),
 
         setActiveSourceId: (id) => set({ activeSourceId: id, selectedRowId: null }),
@@ -187,6 +190,7 @@ export const useCatalog = create<CatalogState>()(
             sources: [],
             activeSourceId: null,
             decisions: {},
+            lastSharedUpdateAt: null,
             query: "",
             band: "confirmed",
             selectedRowId: null,
