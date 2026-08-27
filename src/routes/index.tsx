@@ -617,7 +617,11 @@ function Home() {
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Buscar código o descripción…"
+                  placeholder={
+                    activeSource
+                      ? "Buscar código o descripción…"
+                      : "Buscar código en cualquier base…"
+                  }
                   className="h-10 pl-10"
                   aria-label="Buscar"
                   disabled={isComparing}
@@ -661,7 +665,7 @@ function Home() {
                 onSelect={setSelectedRowId}
               />
             ) : reference ? (
-              <MasterTable rows={reference.rows} query={query} />
+              <MasterTable rows={rows} sources={sources} query={query} />
             ) : (
               <div className="rounded-xl border border-border bg-surface px-6 py-12 text-center text-sm text-muted">
                 No se pudo cargar la base maestra BAMinds.
