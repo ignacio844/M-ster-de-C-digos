@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Pencil,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { MatchBar, MatchPercent } from "@/components/match-bar";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +46,7 @@ export function MatchTable({
   const decisions = useCatalog((state) => state.decisions);
   const confirmMatch = useCatalog((state) => state.confirmMatch);
   const rejectMatch = useCatalog((state) => state.rejectMatch);
+  const undoMatch = useCatalog((state) => state.undoMatch);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -130,6 +132,15 @@ export function MatchTable({
       toast.message("Sugerencia eliminada para todos");
     } catch {
       toast.error("No se pudo guardar el cambio");
+    }
+  }
+
+  async function undo(row: RowMatch) {
+    try {
+      await undoMatch(source.id, row.bam.id);
+      toast.success("Confirmación deshecha; la coincidencia vuelve a revisión");
+    } catch {
+      toast.error("No se pudo deshacer la confirmación");
     }
   }
 
@@ -268,9 +279,23 @@ export function MatchTable({
                     <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
                       <div className="flex justify-end gap-1.5">
                         {resolved.confirmed ? (
-                          <Badge tone="high" className="gap-1 px-2.5 py-1.5">
-                            <Check className="size-3.5" /> Confirmado
-                          </Badge>
+                          <>
+                            <Badge tone="high" className="gap-1 px-2.5 py-1.5">
+                              <Check className="size-3.5" /> Confirmado
+                            </Badge>
+                            {decision?.status === "confirmed" ? (
+                              <Button
+                                size="sm"
+                                title="Deshacer confirmación"
+                                aria-label="Deshacer confirmación"
+                                variant="outline"
+                                onClick={() => void undo(row)}
+                              >
+                                <Undo2 />
+                                <span className="hidden 2xl:inline">Deshacer</span>
+                              </Button>
+                            ) : null}
+                          </>
                         ) : (
                           <>
                             <Button
@@ -355,10 +380,25 @@ export function MatchTable({
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {resolved.confirmed ? (
-                    <Badge tone="high" className="col-span-3 justify-center gap-1 py-2.5">
-                      <Check className="size-3.5" />
-                      Confirmado
-                    </Badge>
+                    <>
+                      <Badge
+                        tone="high"
+                        className={
+                          decision?.status === "confirmed"
+                            ? "col-span-2 justify-center gap-1 py-2.5"
+                            : "col-span-3 justify-center gap-1 py-2.5"
+                        }
+                      >
+                        <Check className="size-3.5" />
+                        Confirmado
+                      </Badge>
+                      {decision?.status === "confirmed" ? (
+                        <Button variant="outline" onClick={() => void undo(row)}>
+                          <Undo2 />
+                          Deshacer
+                        </Button>
+                      ) : null}
+                    </>
                   ) : (
                     <>
                       <Button onClick={() => void confirm(row)} disabled={!resolved.matched}>

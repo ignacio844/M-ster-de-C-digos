@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Check, PencilLine, Trash2 } from "lucide-react";
+import { Check, PencilLine, Trash2, Undo2 } from "lucide-react";
 import { MatchBar, MatchPercent } from "@/components/match-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ export function RowDetail({ row, source }: { row: RowMatch | null; source: Sourc
   const confirmMatch = useCatalog((state) => state.confirmMatch);
   const confirmManualMatch = useCatalog((state) => state.confirmManualMatch);
   const rejectMatch = useCatalog((state) => state.rejectMatch);
+  const undoMatch = useCatalog((state) => state.undoMatch);
   const cell = row && source ? row.cells.find((item) => item.sourceId === source.id) : null;
   const decision = row && source ? decisions[matchDecisionKey(source.id, row.bam.id)] : undefined;
   const resolved = cell ? resolveCellMatch(cell, decision) : null;
@@ -83,6 +84,16 @@ export function RowDetail({ row, source }: { row: RowMatch | null; source: Sourc
       );
     } catch {
       toast.error("No se pudo guardar el código confirmado");
+    }
+  }
+
+  async function undo() {
+    if (!row || !source) return;
+    try {
+      await undoMatch(source.id, row.bam.id);
+      toast.success("Confirmación deshecha; ya podés corregir la coincidencia");
+    } catch {
+      toast.error("No se pudo deshacer la confirmación");
     }
   }
 
@@ -153,6 +164,12 @@ export function RowDetail({ row, source }: { row: RowMatch | null; source: Sourc
                       Eliminar
                     </Button>
                   </div>
+                ) : null}
+                {resolved.confirmed && decision?.status === "confirmed" ? (
+                  <Button variant="outline" className="mt-4 w-full" onClick={() => void undo()}>
+                    <Undo2 />
+                    Deshacer confirmación
+                  </Button>
                 ) : null}
               </section>
 

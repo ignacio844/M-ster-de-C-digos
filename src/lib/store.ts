@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { CatalogRow, MatchBand, MatchDecision, Source } from "@/lib/matching";
-import { saveSharedDecision, type SharedDecisionsSnapshot } from "@/lib/shared-decisions";
+import {
+  deleteSharedDecision,
+  saveSharedDecision,
+  type SharedDecisionsSnapshot,
+} from "@/lib/shared-decisions";
 
 export function matchDecisionKey(sourceId: string, bamId: string) {
   return `${sourceId}::${bamId}`;
@@ -31,6 +35,7 @@ export type CatalogState = {
   confirmMatch: (sourceId: string, bamId: string, candidateRowId?: string) => Promise<void>;
   confirmManualMatch: (sourceId: string, bamId: string, match: CatalogRow) => Promise<void>;
   rejectMatch: (sourceId: string, bamId: string) => Promise<void>;
+  undoMatch: (sourceId: string, bamId: string) => Promise<void>;
   clearSources: () => void;
   clearAll: () => void;
 };
@@ -161,6 +166,31 @@ export const useCatalog = create<CatalogState>()(
             manualMatch: match,
           }),
         rejectMatch: (sourceId, bamId) => commitDecision(sourceId, bamId, { status: "rejected" }),
+        undoMatch: async (sourceId, bamId) => {
+          const key = matchDecisionKey(sourceId, bamId);
+          const previous = get().decisions[key];
+          if (!previous) return;
+
+          set((state) => {
+            const decisions = { ...state.decisions };
+            delete decisions[key];
+            return { decisions };
+          });
+
+          const isFixed = get().sources.some((source) => source.id === sourceId && source.fixed);
+          if (!isFixed) return;
+
+          try {
+            const deleted = await deleteSharedDecision({ data: { sourceId, bamId } });
+            set({ lastSharedUpdateAt: deleted.updatedAt });
+          } catch (error) {
+            set((state) => {
+              if (state.decisions[key]) return {};
+              return { decisions: { ...state.decisions, [key]: previous } };
+            });
+            throw error;
+          }
+        },
 
         clearSources: () =>
           set((state) => {

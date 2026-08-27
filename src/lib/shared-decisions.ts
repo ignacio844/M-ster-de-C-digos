@@ -23,6 +23,11 @@ const sharedDecisionSchema = z.object({
   }),
 });
 
+const sharedDecisionKeySchema = sharedDecisionSchema.pick({
+  sourceId: true,
+  bamId: true,
+});
+
 export type SharedDecisionRecord = {
   sourceId: string;
   bamId: string;
@@ -117,4 +122,26 @@ export const saveSharedDecision = createServerFn({ method: "POST" })
 
     if (!saved) throw new Error("La decisión no devolvió una fecha de actualización");
     return saved;
+  });
+
+export const deleteSharedDecision = createServerFn({ method: "POST" })
+  .validator(sharedDecisionKeySchema)
+  .handler(async ({ data }): Promise<SharedDecisionWriteResult> => {
+    const sql = await getSql();
+    const [deleted] = await sql.query<SharedDecisionWriteResult>(
+      `with deleted as (
+        delete from match_decisions
+        where source_id = $1 and bam_id = $2
+        returning 1
+      )
+      select to_char(
+        now() at time zone 'UTC',
+        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+      ) as "updatedAt"
+      from (select count(*) from deleted) result`,
+      [data.sourceId, data.bamId],
+    );
+
+    if (!deleted) throw new Error("No se pudo deshacer la decisión");
+    return deleted;
   });
