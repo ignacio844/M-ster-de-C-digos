@@ -146,6 +146,11 @@ function authPopupPlugin(): Plugin {
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
 export default defineConfig(({ command, isPreview }) => ({
+  // Nitro deja algunas dependencias como imports externos. En Vercel, `tslib`
+  // debe viajar dentro de la función SSR para que Radix no falle al arrancar.
+  ssr: {
+    noExternal: ["tslib"],
+  },
   server: {
     host: "0.0.0.0",
     port: 8080,
@@ -171,6 +176,10 @@ export default defineConfig(({ command, isPreview }) => ({
       ? [
           nitro({
             preset: "vercel",
+            // Evita que `tslib` quede como un import externo en /var/task.
+            // Radix lo usa durante el render SSR y Vercel debe recibirlo dentro
+            // de la función, no como una dependencia que deba resolver aparte.
+            noExternals: ["tslib"],
             // Auto-registers server/middleware/* (the PWA install page +
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
