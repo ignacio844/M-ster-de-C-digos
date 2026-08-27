@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Cruce BAMinds",
+      "hasCanvas": false,
+      "bodyTextLen": 3322,
+      "bodyTextHash": "21eb163eb399d259513c9f986356a2457e5cb231dc8a8609c9cd3b3aa0a0306c",
+      "bodyTextPrefix": "Cruce BAMinds Códigos BAMinds vs. cómo los nombran las otras bas",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Cruce BAMinds",
+      "hasCanvas": false,
+      "bodyTextLen": 2201,
+      "bodyTextHash": "3a994145c6500333291704930012a33835297d186890c79646a2ff0779dc43b1",
+      "bodyTextPrefix": "Cruce BAMinds Códigos BAMinds vs. cómo los nombran las otras bas",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}
