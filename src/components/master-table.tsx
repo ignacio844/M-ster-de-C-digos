@@ -57,7 +57,15 @@ function matchForColumn(
   };
 }
 
-function CodeMatch({ match, label }: { match: DisplayMatch; label: string }) {
+function CodeMatch({
+  match,
+  label,
+  showScore = true,
+}: {
+  match: DisplayMatch;
+  label: string;
+  showScore?: boolean;
+}) {
   const percentage = match.by === "none" ? 0 : Math.round(match.score);
 
   return (
@@ -73,12 +81,14 @@ function CodeMatch({ match, label }: { match: DisplayMatch; label: string }) {
       >
         {match.code ?? "—"}
       </p>
-      <div className="mt-2 flex items-center gap-2">
-        <MatchBar score={match.score} by={match.by} className="min-w-12 flex-1" />
-        <span className="w-9 text-right font-mono text-xs font-medium text-muted tabular-nums">
-          {percentage}%
-        </span>
-      </div>
+      {showScore && (
+        <div className="mt-2 flex items-center gap-2">
+          <MatchBar score={match.score} by={match.by} className="min-w-12 flex-1" />
+          <span className="w-9 text-right font-mono text-xs font-medium text-muted tabular-nums">
+            {percentage}%
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -169,7 +179,11 @@ export function MasterTable({
                             : "px-4 py-3.5"
                         }
                       >
-                        <CodeMatch match={match} label={MASTER_COLUMNS[index].label} />
+                        <CodeMatch
+                          match={match}
+                          label={MASTER_COLUMNS[index].label}
+                          showScore={index !== 0}
+                        />
                       </td>
                     ))}
                   </tr>
@@ -185,7 +199,7 @@ export function MasterTable({
                   <p className="mb-2 text-xs font-medium tracking-wide text-muted uppercase">
                     BAMINDS
                   </p>
-                  <CodeMatch match={matches[0]} label="BAMINDS" />
+                  <CodeMatch match={matches[0]} label="BAMINDS" showScore={false} />
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-5">
                   {MASTER_COLUMNS.slice(1).map((column, index) => (
