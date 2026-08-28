@@ -1,4 +1,14 @@
 @import "tailwindcss";
+
+.clip-wipe-reveal {
+  transition: clip-path 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clip-wipe-reveal {
+    transition: none;
+  }
+}
 @import "tw-animate-css";
 
 @theme {

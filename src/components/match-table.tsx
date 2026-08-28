@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { toast } from "sonner";
 import {
@@ -44,6 +44,45 @@ function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   return dir === "asc" ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />;
 }
 
+function ClipWipe({
+  base,
+  reveal,
+  onClick,
+}: {
+  base: ReactNode;
+  reveal: ReactNode;
+  onClick: () => void;
+}) {
+  const [on, setOn] = useState(false);
+
+  return (
+    <button
+      type="button"
+      aria-label="Marcar corregido"
+      className="h-9 min-w-44 overflow-hidden rounded-full text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onMouseEnter={() => setOn(true)}
+      onMouseLeave={() => setOn(false)}
+      onFocus={() => setOn(true)}
+      onBlur={() => setOn(false)}
+      onClick={onClick}
+      style={{ position: "relative" }}
+    >
+      <span className="flex h-full w-full items-center justify-center gap-2 border border-match-mid/20 bg-match-mid/12 px-4 text-match-mid">
+        {base}
+      </span>
+      <span
+        aria-hidden="true"
+        className="clip-wipe-reveal absolute inset-0 flex items-center justify-center gap-2 bg-primary px-4 text-primary-fg"
+        style={{
+          clipPath: on ? "inset(0 0 0 0)" : "inset(0 100% 0 0)",
+        }}
+      >
+        {reveal}
+      </span>
+    </button>
+  );
+}
+
 function StateBadge({ state }: { state: ConfirmationState }) {
   if (state === "exact") {
     return <Badge tone="high" className="gap-1 px-2.5 py-1.5"><CheckCircle2 className="size-3.5" /> Exacto de origen</Badge>;
@@ -51,7 +90,7 @@ function StateBadge({ state }: { state: ConfirmationState }) {
   if (state === "corrected") {
     return <Badge tone="high" className="gap-1 px-2.5 py-1.5"><Check className="size-3.5" /> Corregido</Badge>;
   }
-  return <Badge tone="mid" className="gap-1 px-2.5 py-1.5"><Wrench className="size-3.5" /> Corrección pendiente</Badge>;
+  return <Badge tone="mid" className="gap-1 px-2.5 py-1.5"><Wrench className="size-3.5" /> Pendiente</Badge>;
 }
 
 function OriginalScore({ score, state }: { score: number; state?: ConfirmationState | null }) {
@@ -234,10 +273,18 @@ export function MatchTable({ rows, source, query, band, onSelect }: {
                       <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2">
                           {state ? (
-                            <>
-                              <StateBadge state={state} />
-                              {state === "pending" ? <Button size="sm" onClick={() => setCorrectionRow(row)}><Wrench /> Marcar corregido</Button> : state === "corrected" ? <Button size="icon-sm" variant="outline" title="Volver a corrección pendiente" aria-label="Volver a corrección pendiente" onClick={() => void restorePending(row)}><RotateCcw /></Button> : null}
-                            </>
+                            state === "pending" ? (
+                              <ClipWipe
+                                base={<><Wrench className="size-4" /> Pendiente</>}
+                                reveal={<><Check className="size-4" /> Marcar corregido</>}
+                                onClick={() => setCorrectionRow(row)}
+                              />
+                            ) : (
+                              <>
+                                <StateBadge state={state} />
+                                {state === "corrected" ? <Button size="icon-sm" variant="outline" title="Volver a corrección pendiente" aria-label="Volver a corrección pendiente" onClick={() => void restorePending(row)}><RotateCcw /></Button> : null}
+                              </>
+                            )
                           ) : (
                             <>
                               <Button size="sm" title="Confirmar match" onClick={() => void confirm(row)} disabled={!resolved.matched}><Check /><span className="hidden xl:inline">Confirmar match</span></Button>
