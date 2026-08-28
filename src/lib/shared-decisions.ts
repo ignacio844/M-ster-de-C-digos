@@ -20,6 +20,9 @@ const sharedDecisionSchema = z.object({
     status: z.enum(["confirmed", "rejected"]),
     candidateRowId: z.string().max(500).optional(),
     manualMatch: catalogRowSchema.optional(),
+    originalScore: z.number().int().min(0).max(100).optional(),
+    correctionStatus: z.enum(["pending", "corrected"]).optional(),
+    correctedAt: z.string().datetime().optional(),
   }),
 });
 
@@ -49,6 +52,9 @@ type DecisionRow = {
   status: "confirmed" | "rejected";
   candidateRowId: string | null;
   manualMatch: CatalogRow | null;
+  originalScore: number | null;
+  correctionStatus: "pending" | "corrected" | null;
+  correctedAt: string | null;
   updatedAt: string;
 };
 
@@ -62,6 +68,12 @@ export const listSharedDecisions = createServerFn({ method: "GET" }).handler(
         status,
         candidate_row_id as "candidateRowId",
         manual_match as "manualMatch",
+        original_score as "originalScore",
+        correction_status as "correctionStatus",
+        case when corrected_at is null then null else to_char(
+          corrected_at at time zone 'UTC',
+          'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+        ) end as "correctedAt",
         to_char(
           updated_at at time zone 'UTC',
           'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
@@ -78,6 +90,9 @@ export const listSharedDecisions = createServerFn({ method: "GET" }).handler(
           status: row.status,
           ...(row.candidateRowId ? { candidateRowId: row.candidateRowId } : {}),
           ...(row.manualMatch ? { manualMatch: row.manualMatch } : {}),
+          ...(row.originalScore != null ? { originalScore: row.originalScore } : {}),
+          ...(row.correctionStatus ? { correctionStatus: row.correctionStatus } : {}),
+          ...(row.correctedAt ? { correctedAt: row.correctedAt } : {}),
         },
       })),
       lastUpdatedAt: rows.at(-1)?.updatedAt ?? null,
@@ -100,12 +115,18 @@ export const saveSharedDecision = createServerFn({ method: "POST" })
         status,
         candidate_row_id,
         manual_match,
+        original_score,
+        correction_status,
+        corrected_at,
         updated_at
-      ) values ($1, $2, $3, $4, $5::jsonb, now())
+      ) values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::timestamptz, now())
       on conflict (source_id, bam_id) do update set
         status = excluded.status,
         candidate_row_id = excluded.candidate_row_id,
         manual_match = excluded.manual_match,
+        original_score = excluded.original_score,
+        correction_status = excluded.correction_status,
+        corrected_at = excluded.corrected_at,
         updated_at = now()
       returning to_char(
         updated_at at time zone 'UTC',
@@ -117,6 +138,9 @@ export const saveSharedDecision = createServerFn({ method: "POST" })
         data.decision.status,
         data.decision.candidateRowId ?? null,
         manualMatch,
+        data.decision.originalScore ?? null,
+        data.decision.correctionStatus ?? null,
+        data.decision.correctedAt ?? null,
       ],
     );
 

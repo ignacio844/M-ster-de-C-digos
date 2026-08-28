@@ -32,8 +32,20 @@ export type CatalogState = {
   setQuery: (q: string) => void;
   setBand: (b: MatchBand) => void;
   setSelectedRowId: (id: string | null) => void;
-  confirmMatch: (sourceId: string, bamId: string, candidateRowId?: string) => Promise<void>;
-  confirmManualMatch: (sourceId: string, bamId: string, match: CatalogRow) => Promise<void>;
+  confirmMatch: (
+    sourceId: string,
+    bamId: string,
+    candidateRowId?: string,
+    originalScore?: number,
+  ) => Promise<void>;
+  confirmManualMatch: (
+    sourceId: string,
+    bamId: string,
+    match: CatalogRow,
+    originalScore: number,
+  ) => Promise<void>;
+  markCorrection: (sourceId: string, bamId: string) => Promise<void>;
+  undoCorrection: (sourceId: string, bamId: string) => Promise<void>;
   rejectMatch: (sourceId: string, bamId: string) => Promise<void>;
   undoMatch: (sourceId: string, bamId: string) => Promise<void>;
   clearSources: () => void;
@@ -155,16 +167,40 @@ export const useCatalog = create<CatalogState>()(
         setQuery: (q) => set({ query: q }),
         setBand: (b) => set({ band: b }),
         setSelectedRowId: (id) => set({ selectedRowId: id }),
-        confirmMatch: (sourceId, bamId, candidateRowId) =>
+        confirmMatch: (sourceId, bamId, candidateRowId, originalScore) =>
           commitDecision(sourceId, bamId, {
             status: "confirmed",
             candidateRowId,
+            ...(originalScore != null ? { originalScore } : {}),
+            ...(originalScore != null && originalScore < 100
+              ? { correctionStatus: "pending" as const }
+              : {}),
           }),
-        confirmManualMatch: (sourceId, bamId, match) =>
+        confirmManualMatch: (sourceId, bamId, match, originalScore) =>
           commitDecision(sourceId, bamId, {
             status: "confirmed",
             manualMatch: match,
+            originalScore,
+            correctionStatus: "pending",
           }),
+        markCorrection: async (sourceId, bamId) => {
+          const previous = get().decisions[matchDecisionKey(sourceId, bamId)];
+          if (!previous || previous.status !== "confirmed") return;
+          await commitDecision(sourceId, bamId, {
+            ...previous,
+            correctionStatus: "corrected",
+            correctedAt: new Date().toISOString(),
+          });
+        },
+        undoCorrection: async (sourceId, bamId) => {
+          const previous = get().decisions[matchDecisionKey(sourceId, bamId)];
+          if (!previous || previous.status !== "confirmed") return;
+          const { correctedAt: _correctedAt, ...decision } = previous;
+          await commitDecision(sourceId, bamId, {
+            ...decision,
+            correctionStatus: "pending",
+          });
+        },
         rejectMatch: (sourceId, bamId) => commitDecision(sourceId, bamId, { status: "rejected" }),
         undoMatch: async (sourceId, bamId) => {
           const key = matchDecisionKey(sourceId, bamId);

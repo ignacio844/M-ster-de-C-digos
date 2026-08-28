@@ -39,7 +39,12 @@ export type MatchDecision = {
   status: "confirmed" | "rejected";
   candidateRowId?: string;
   manualMatch?: CatalogRow;
+  originalScore?: number;
+  correctionStatus?: "pending" | "corrected";
+  correctedAt?: string;
 };
+
+export type ConfirmationState = "exact" | "pending" | "corrected";
 
 const STOP = new Set([
   "de",
@@ -572,6 +577,28 @@ export function resolveCellMatch(
       (!decision && cell.by !== "none" && cell.score === 100),
     rejected: false,
   };
+}
+
+export function originalMatchScore(cell: CellMatch, decision?: MatchDecision): number {
+  if (decision?.originalScore != null) return decision.originalScore;
+  if (decision?.candidateRowId) {
+    return (
+      cell.candidates.find((candidate) => candidate.row.id === decision.candidateRowId)?.score ??
+      cell.score
+    );
+  }
+  return cell.score;
+}
+
+export function confirmationState(
+  cell: CellMatch,
+  decision?: MatchDecision,
+): ConfirmationState | null {
+  const resolved = resolveCellMatch(cell, decision);
+  if (!resolved.confirmed) return null;
+  if (decision?.correctionStatus === "corrected") return "corrected";
+  if (decision?.manualMatch || originalMatchScore(cell, decision) < 100) return "pending";
+  return "exact";
 }
 
 export function decisionBand(

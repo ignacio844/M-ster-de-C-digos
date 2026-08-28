@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Check, PencilLine, Trash2, Undo2 } from "lucide-react";
+import { Check, CheckCircle2, PencilLine, RotateCcw, Trash2, Undo2, Wrench } from "lucide-react";
 import { MatchBar, MatchPercent } from "@/components/match-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { RowMatch, Source } from "@/lib/matching";
-import { matchTone, normalizeCode, resolveCellMatch } from "@/lib/matching";
+import {
+  confirmationState,
+  matchTone,
+  normalizeCode,
+  originalMatchScore,
+  resolveCellMatch,
+} from "@/lib/matching";
 import { matchDecisionKey, useCatalog } from "@/lib/store";
 
 export function RowDetail({ row, source }: { row: RowMatch | null; source: Source | null }) {
@@ -25,9 +31,12 @@ export function RowDetail({ row, source }: { row: RowMatch | null; source: Sourc
   const confirmManualMatch = useCatalog((state) => state.confirmManualMatch);
   const rejectMatch = useCatalog((state) => state.rejectMatch);
   const undoMatch = useCatalog((state) => state.undoMatch);
+  const markCorrection = useCatalog((state) => state.markCorrection);
+  const undoCorrection = useCatalog((state) => state.undoCorrection);
   const cell = row && source ? row.cells.find((item) => item.sourceId === source.id) : null;
   const decision = row && source ? decisions[matchDecisionKey(source.id, row.bam.id)] : undefined;
   const resolved = cell ? resolveCellMatch(cell, decision) : null;
+  const state = cell ? confirmationState(cell, decision) : null;
 
   useEffect(() => {
     setManualCode("");
@@ -36,7 +45,10 @@ export function RowDetail({ row, source }: { row: RowMatch | null; source: Sourc
   async function confirm(candidateRowId?: string) {
     if (!row || !source) return;
     try {
-      await confirmMatch(source.id, row.bam.id, candidateRowId);
+      const candidateScore = candidateRowId
+        ? cell?.candidates.find((candidate) => candidate.row.id === candidateRowId)?.score
+        : cell?.score;
+      await confirmMatch(source.id, row.bam.id, candidateRowId, candidateScore);
       setSelectedRowId(null);
       toast.success("Coincidencia confirmada, compartida y movida a Confirmados");
     } catch {
@@ -75,6 +87,7 @@ export function RowDetail({ row, source }: { row: RowMatch | null; source: Sourc
           name: "Código ingresado manualmente",
           extra: {},
         },
+        cell?.score ?? 0,
       );
       setSelectedRowId(null);
       toast.success(
@@ -94,6 +107,26 @@ export function RowDetail({ row, source }: { row: RowMatch | null; source: Sourc
       toast.success("Confirmación deshecha; ya podés corregir la coincidencia");
     } catch {
       toast.error("No se pudo deshacer la confirmación");
+    }
+  }
+
+  async function markAsCorrected() {
+    if (!row || !source) return;
+    try {
+      await markCorrection(source.id, row.bam.id);
+      toast.success("Corrección registrada; se conserva el match original");
+    } catch {
+      toast.error("No se pudo registrar la corrección");
+    }
+  }
+
+  async function restorePending() {
+    if (!row || !source) return;
+    try {
+      await undoCorrection(source.id, row.bam.id);
+      toast.success("La corrección vuelve a quedar pendiente");
+    } catch {
+      toast.error("No se pudo deshacer la corrección");
     }
   }
 
@@ -124,16 +157,27 @@ export function RowDetail({ row, source }: { row: RowMatch | null; source: Sourc
                     </p>
                     <h3 className="mt-1 font-medium">{source.name}</h3>
                   </div>
-                  {resolved.confirmed ? (
+                  {state === "exact" ? (
                     <Badge tone="high" className="gap-1">
-                      <Check className="size-3.5" />
-                      Confirmado
+                      <CheckCircle2 className="size-3.5" /> Exacto de origen
+                    </Badge>
+                  ) : state === "corrected" ? (
+                    <Badge tone="high" className="gap-1">
+                      <Check className="size-3.5" /> Corregido
+                    </Badge>
+                  ) : state === "pending" ? (
+                    <Badge tone="mid" className="gap-1">
+                      <Wrench className="size-3.5" /> Corrección pendiente
                     </Badge>
                   ) : (
                     <MatchPercent score={resolved.score} by={resolved.by} />
                   )}
                 </div>
-                <MatchBar score={resolved.score} by={resolved.by} className="mb-3" />
+                <MatchBar
+                  score={cell ? originalMatchScore(cell, decision) : resolved.score}
+                  by={resolved.by}
+                  className="mb-3"
+                />
                 {resolved.matched ? (
                   <div>
                     <p className="font-mono text-xs text-muted">{resolved.matched.code}</p>
@@ -165,10 +209,27 @@ export function RowDetail({ row, source }: { row: RowMatch | null; source: Sourc
                     </Button>
                   </div>
                 ) : null}
-                {resolved.confirmed && decision?.status === "confirmed" ? (
+                {state === "pending" ? (
+                  <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <Button onClick={() => void markAsCorrected()}>
+                      <Wrench /> Marcar corregido
+                    </Button>
+                    <Button variant="outline" onClick={() => void undo()}>
+                      <Undo2 /> Deshacer match
+                    </Button>
+                  </div>
+                ) : state === "corrected" ? (
+                  <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <Button variant="outline" onClick={() => void restorePending()}>
+                      <RotateCcw /> Volver a pendiente
+                    </Button>
+                    <Button variant="outline" onClick={() => void undo()}>
+                      <Undo2 /> Deshacer match
+                    </Button>
+                  </div>
+                ) : resolved.confirmed && decision?.status === "confirmed" ? (
                   <Button variant="outline" className="mt-4 w-full" onClick={() => void undo()}>
-                    <Undo2 />
-                    Deshacer confirmación
+                    <Undo2 /> Deshacer match
                   </Button>
                 ) : null}
               </section>

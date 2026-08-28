@@ -366,7 +366,7 @@ function Home() {
                 <TooltipTrigger asChild>
                   <div
                     className="flex h-11 min-w-52 items-center gap-2 rounded-sm border border-border bg-surface px-3 shadow-sm"
-                    aria-label={`Última actualización del progreso SQL: ${sqlUpdateLabel}`}
+                    aria-label={`Progreso guardado: ${sqlUpdateLabel}`}
                     aria-live="polite"
                     role="status"
                     tabIndex={0}
@@ -374,7 +374,7 @@ function Home() {
                     <Database className="size-4 shrink-0 text-primary" />
                     <div className="min-w-0 leading-tight">
                       <p className="text-xs font-medium tracking-wide text-muted uppercase">
-                        Última actualización
+                        Progreso guardado
                       </p>
                       <time
                         className="block truncate font-mono text-xs font-medium tabular-nums"
@@ -386,7 +386,7 @@ function Home() {
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Fecha y hora del último cambio guardado en el progreso compartido.
+                  Fecha y hora del último cambio guardado para todos los usuarios.
                 </TooltipContent>
               </Tooltip>
             </div>
