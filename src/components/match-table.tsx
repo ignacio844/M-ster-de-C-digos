@@ -59,7 +59,7 @@ function ClipWipe({
     <button
       type="button"
       aria-label="Marcar corregido"
-      className="h-9 min-w-44 overflow-hidden rounded-full text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="h-8 w-40 overflow-hidden rounded-full text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onMouseEnter={() => setOn(true)}
       onMouseLeave={() => setOn(false)}
       onFocus={() => setOn(true)}
@@ -67,12 +67,12 @@ function ClipWipe({
       onClick={onClick}
       style={{ position: "relative" }}
     >
-      <span className="flex h-full w-full items-center justify-center gap-2 border border-match-mid/20 bg-match-mid/12 px-4 text-match-mid">
+      <span className="flex h-full w-full items-center justify-center gap-1 bg-match-mid/12 px-3 text-match-mid">
         {base}
       </span>
       <span
         aria-hidden="true"
-        className="clip-wipe-reveal absolute inset-0 flex items-center justify-center gap-2 bg-primary px-4 text-primary-fg"
+        className="clip-wipe-reveal absolute inset-0 flex items-center justify-center gap-1 bg-primary px-3 text-primary-fg"
         style={{
           clipPath: on ? "inset(0 0 0 0)" : "inset(0 100% 0 0)",
         }}
@@ -85,12 +85,12 @@ function ClipWipe({
 
 function StateBadge({ state }: { state: ConfirmationState }) {
   if (state === "exact") {
-    return <Badge tone="high" className="gap-1 px-2.5 py-1.5"><CheckCircle2 className="size-3.5" /> Exacto de origen</Badge>;
+    return <Badge tone="high" className="h-8 w-40 justify-center gap-1 px-3 py-0"><CheckCircle2 className="size-3.5" /> Exacto de origen</Badge>;
   }
   if (state === "corrected") {
-    return <Badge tone="high" className="gap-1 px-2.5 py-1.5"><Check className="size-3.5" /> Corregido</Badge>;
+    return <Badge tone="high" className="h-8 w-40 justify-center gap-1 px-3 py-0"><Check className="size-3.5" /> Corregido</Badge>;
   }
-  return <Badge tone="mid" className="gap-1 px-2.5 py-1.5"><Wrench className="size-3.5" /> Pendiente</Badge>;
+  return <Badge tone="mid" className="h-8 w-40 justify-center gap-1 px-3 py-0"><Wrench className="size-3.5" /> Pendiente</Badge>;
 }
 
 function OriginalScore({ score, state }: { score: number; state?: ConfirmationState | null }) {
@@ -275,8 +275,8 @@ export function MatchTable({ rows, source, query, band, onSelect }: {
                           {state ? (
                             state === "pending" ? (
                               <ClipWipe
-                                base={<><Wrench className="size-4" /> Pendiente</>}
-                                reveal={<><Check className="size-4" /> Marcar corregido</>}
+                                base={<><Wrench className="size-3.5" /> Pendiente</>}
+                                reveal={<><Check className="size-3.5" /> Marcar corregido</>}
                                 onClick={() => setCorrectionRow(row)}
                               />
                             ) : (
